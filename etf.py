@@ -1,5 +1,5 @@
 import numpy as np
-import json
+import json, datetime
 from operator import itemgetter
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
@@ -148,9 +148,28 @@ class Feature():
 
         return pred_answer
 
+    def dateToWeekday(self, data, day_pred):
 
+        week_day = []
+        for i in range(len(data)):
+            date = data[i][day_pred*4-4]
+            year = int(date//10000)
+            month = int((date%10000)//100)
+            day = int(date%100)
+            week_day.append(datetime.datetime(year, month, day).strftime("%w") )
 
+        return np.array(week_day)
 
+    def accWeekday(self, data, y_pred, day_pred):
+
+        week_day = self.dateToWeekday(data, day_pred)
+        y_pred = np.where(y_pred > 0.5, 1, 0)
+        for i in range(1, 6):
+            acc = 0
+            tmp = np.where(week_day=='%d'%i)
+            for j in tmp[0]:
+                acc += int(y_pred[j] == data[j][day_pred*4-3])
+            print('星期%d : %f'%(i, acc/len(tmp[0])))
 
 
 
