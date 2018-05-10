@@ -1,7 +1,7 @@
 import numpy as np
 import json, datetime
 from operator import itemgetter
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.preprocessing import StandardScaler, MinMaxScaler, scale
 
 class Feature():
 
@@ -43,6 +43,10 @@ class Feature():
             return self.__standard_scaler(etf, tr_data)
         elif self.scaler == 'MinMaxScaler':
             return self.__minmax_scaler(etf, tr_data)
+        elif self.scaler == 'PerStandardScaler':
+            return self.__per_standard_scaler(etf, tr_data)
+        elif self.scaler == 'PerMinMaxScaler':
+            return self.__per_minmax_scaler(etf, tr_data)
 
     def build_xy(self, data):
 
@@ -56,12 +60,13 @@ class Feature():
             # generate y
             for after_day in range(5):
                 ud = float(data[day + self.feature_day + after_day][4]) - float(data[day + self.feature_day + after_day - 1][4])
+                if  abs(ud/float(data[day + self.feature_day + after_day - 1][4]))> 0.03:
+                    count = 1
+                    break
                 tmp = np.append(tmp, data[day + self.feature_day + after_day][0])
                 tmp = np.append(tmp, (1 if ud >= 0 else 0))
                 tmp = np.append(tmp, ud/float(data[day + self.feature_day + after_day - 1][4]))
                 tmp = np.append(tmp, data[day + self.feature_day + after_day][4])
-                if  abs(ud/float(data[day + self.feature_day + after_day - 1][4]))> 0.03:
-                    count += 1
             # delete outlier of ud rate
             if self.state == 'delete_outlier' and count > 0: continue
             # generate x
@@ -72,6 +77,30 @@ class Feature():
             etf = np.vstack((etf, tmp))
 
         return etf
+
+    def __per_standard_scaler(self, te, tr=None):
+
+        if tr is None: tr = te
+
+        te[:, 20:] = scale(te[:, 20:], axis=1)
+        standardscaler_y = StandardScaler()
+        standardscaler_y.fit(tr[:, (2,6,10,14,18)])
+        for i in range(len(te)):
+            te[i, (2,6,10,14,18)] = standardscaler_y.transform(np.reshape(te[i, (2,6,10,14,18)], (1, -1)))
+
+        return te
+
+    def __per_minmax_scaler(self, te, tr=None):
+
+        if tr is None: tr = te
+
+        te[:, 20:] = scale(te[:, 20:], axis=1)
+        minmaxscaler_y = MinMaxScaler()
+        minmaxscaler_y.fit(tr[:, (2,6,10,14,18)])
+        for i in range(len(te)):
+            te[i, (2,6,10,14,18)] = minmaxscaler_y.transform(np.reshape(te[i, (2,6,10,14,18)], (1, -1)))
+
+        return te
 
     def __standard_scaler(self, te, tr=None):
 
@@ -160,7 +189,7 @@ class Feature():
 
         return np.array(week_day)
 
-    def accWeekday(self, data, y_pred, day_pred):
+    def accWeekday(self, data, y_pred, day_pred, show_date=1):
 
         week_day = self.dateToWeekday(data, day_pred)
         y_pred = np.where(y_pred > 0.5, 1, 0)
@@ -168,8 +197,13 @@ class Feature():
             acc = 0
             tmp = np.where(week_day=='%d'%i)
             for j in tmp[0]:
+                if show_date: print(data[j][0])
                 acc += int(y_pred[j] == data[j][day_pred*4-3])
             print('星期%d : %f'%(i, acc/len(tmp[0])))
+
+    # def output(path, ):
+    #
+    #     
 
 
 
