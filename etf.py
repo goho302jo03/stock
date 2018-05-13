@@ -1,5 +1,5 @@
 import numpy as np
-import json, datetime
+import json, datetime, time
 from operator import itemgetter
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, scale
 
@@ -23,6 +23,7 @@ class Feature():
         for i in range(len(data)):
             data[i] = data[i].split(',')
             tmp = data[i][0].split('/')
+
             if len(tmp[1]) == 1:
                 tmp[1] = '0' + tmp[1]
             if len(tmp[2]) == 1:
@@ -57,26 +58,63 @@ class Feature():
         for day in range(len(data) - self.feature_day - 4):
             tmp = np.empty(0)
             count = 0
+
             # generate y
             for after_day in range(5):
                 ud = float(data[day + self.feature_day + after_day][4]) - float(data[day + self.feature_day + after_day - 1][4])
-                if  abs(ud/float(data[day + self.feature_day + after_day - 1][4]))> 0.03:
-                    count = 1
-                    break
+                if  abs(ud/float(data[day + self.feature_day + after_day - 1][4]))> 0.03: count += 1
+
+                if ud > 0: label = 2
+                elif ud == 0: label = 1
+                else: label = 0
+
                 tmp = np.append(tmp, data[day + self.feature_day + after_day][0])
-                tmp = np.append(tmp, (1 if ud >= 0 else 0))
+                tmp = np.append(tmp, label)
                 tmp = np.append(tmp, ud/float(data[day + self.feature_day + after_day - 1][4]))
                 tmp = np.append(tmp, data[day + self.feature_day + after_day][4])
+
             # delete outlier of ud rate
             if self.state == 'delete_outlier' and count > 0: continue
+
             # generate x
-            for i in (range(self.feature_day)):
+            for i in range(self.feature_day):
                 tmp = np.append(tmp, getter(data[day + i]))
 
             tmp = np.reshape(tmp.astype(float), (1, self.feature_day*len(self.selected_feature)+20))
             etf = np.vstack((etf, tmp))
 
         return etf
+
+    def build_submit_data(self, tr_data):
+
+        getter = itemgetter(*self.selected_feature)
+
+        etf = np.empty((0, self.feature_day*len(self.selected_feature)+20))
+        with open('../../products/%s.csv' %self.code, 'r') as f:
+            data = f.read().split('\n')[1: -1]
+        for i in range(len(data)):
+            data[i] = data[i].split(',')
+        data = np.array(data[-20:])
+        for j in range(5):
+            tmp = np.empty(0)
+
+            for i in range(4*5):
+                tmp = np.append(tmp, 0)
+
+            for i in range(self.feature_day):
+                tmp = np.append(tmp, getter(data[-(self.feature_day-i+j)]))
+            tmp = np.reshape(tmp.astype(float), (1, self.feature_day*len(self.selected_feature)+20))
+            etf = np.vstack((etf, tmp))
+        if self.scaler == 'NoScaler':
+            return etf
+        elif self.scaler == 'StandardScaler':
+            return self.__standard_scaler(etf, tr_data)
+        elif self.scaler == 'MinMaxScaler':
+            return self.__minmax_scaler(etf, tr_data)
+        elif self.scaler == 'PerStandardScaler':
+            return self.__per_standard_scaler(etf, tr_data)
+        elif self.scaler == 'PerMinMaxScaler':
+            return self.__per_minmax_scaler(etf, tr_data)
 
     def __per_standard_scaler(self, te, tr=None):
 
@@ -189,21 +227,50 @@ class Feature():
 
         return np.array(week_day)
 
+    def accuracy(self, data, y_pred, day_pred):
+
+        acc = 0
+        length = 0
+        y_pred = np.argmax(y_pred, axis=1)
+        for i in range(len(data)):
+            if data[i][day_pred*4-4]>20180101:
+                length += 1
+                acc += int(y_pred[i] == data[i][day_pred*4-3])
+        print(acc/length)
+
     def accWeekday(self, data, y_pred, day_pred, show_date=1):
 
         week_day = self.dateToWeekday(data, day_pred)
-        y_pred = np.where(y_pred > 0.5, 1, 0)
+        y_pred = np.argmax(y_pred, axis=1)
         for i in range(1, 6):
             acc = 0
+            length = 0
             tmp = np.where(week_day=='%d'%i)
             for j in tmp[0]:
-                if show_date: print(data[j][0])
-                acc += int(y_pred[j] == data[j][day_pred*4-3])
-            print('星期%d : %f'%(i, acc/len(tmp[0])))
+                if data[j][day_pred*4-4]>20180101:
+                    if show_date: print(data[j][0])
+                    length += 1
+                    acc += int(y_pred[j] == data[j][day_pred*4-3])
+            print('星期%d : %f, %d'%(i, acc/length, length))
 
-    # def output(path, ):
-    #
-    #     
+    def output_json(self, path, data, y_pred, day_pred):
+
+        y_pred = np.argmax(y_pred, axis=1)-1
+        output = {}
+        output['id'] = self.code.replace('P', '')
+        tmp = []
+        for i in range(len(data)):
+            tmp.append(int(data[i, day_pred*4-4]))
+        output['date'] = tmp
+
+        tmp = []
+        for i in range(len(y_pred)):
+            tmp.append(int(y_pred[i]))
+        output['ud'] = tmp
+
+        with open(path, 'w') as f:
+            json.dump(output, f, indent=4)
+
 
 
 
